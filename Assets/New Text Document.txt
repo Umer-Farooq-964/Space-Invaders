@@ -1,0 +1,186 @@
+        if (!gameStarted) {
+            // Title screen logic
+            if (Keyboard::isKeyPressed(Keyboard::Space)) {
+                gameStarted = true; // Start the game when space is pressed
+            }
+
+            // Fade in and out effect
+            if (fadeClock.getElapsedTime().asSeconds() > 0.1f) {
+                if (fadeIn) {
+                    pressStartText.setFillColor(Color(255, 255, 255, pressStartText.getFillColor().a + 5));
+                    if (pressStartText.getFillColor().a >= 255) {
+                        fadeIn = false;
+                    }
+                }
+                else {
+                    pressStartText.setFillColor(Color(255, 255, 255, pressStartText.getFillColor().a - 5));
+                    if (pressStartText.getFillColor().a <= 0) {
+                        fadeIn = true;
+                    }
+                }
+                fadeClock.restart();
+            }
+
+            window.clear();
+            window.draw(backgroundSprite);
+            window.draw(titleText); // Draw the title
+            window.draw(pressStartText); // Draw the "Press SPACE" text
+            window.draw(madebytext);
+            window.display();
+            continue;
+        }
+
+        // Player movement
+        if (Keyboard::isKeyPressed(Keyboard::Left) && playerSprite.getPosition().x > 0) {
+            playerSprite.move(-PLAYER_SPEED, 0);
+        }
+        if (Keyboard::isKeyPressed(Keyboard::Right) && playerSprite.getPosition().x + playerSprite.getGlobalBounds().width < WINDOW_WIDTH) {
+            playerSprite.move(PLAYER_SPEED, 0);
+        }
+
+        // Shoot bullets
+        if (Keyboard::isKeyPressed(Keyboard::Space)) {
+            static Clock shootClock;
+            if (shootClock.getElapsedTime().asMilliseconds() > 500) {
+                Bullet bullet;
+                bullet.shape.setSize(Vector2f(5.0f, 10.0f));
+                bullet.shape.setFillColor(Color::White);
+                bullet.shape.setPosition(
+                    playerSprite.getPosition().x + playerSprite.getGlobalBounds().width / 2 - bullet.shape.getSize().x / 2,
+                    playerSprite.getPosition().y
+                );
+                bullet.active = true;
+                bullets.push_back(bullet);
+                shootClock.restart();
+            }
+        }
+
+        // Update bullets
+        for (auto& bullet : bullets) {
+            if (bullet.active) {
+                bullet.shape.move(0, -BULLET_SPEED);
+                if (bullet.shape.getPosition().y < 0) {
+                    bullet.active = false;
+                }
+            }
+        }
+
+        // Update enemies
+        bool changeDirection = false;
+        bool gameOver = false;
+        for (auto& enemy : enemies) {
+            if (enemy.active) {
+                enemy.sprite.move(enemyDirection, 0);
+
+                // Check if enemy hits the screen edge for direction change
+                if (enemy.sprite.getPosition().x <= 0 || enemy.sprite.getPosition().x + enemy.sprite.getGlobalBounds().width >= WINDOW_WIDTH) {
+                    changeDirection = true;
+                }
+
+                // Check if enemy reaches the bottom of the screen
+                if (enemy.sprite.getPosition().y + enemy.sprite.getGlobalBounds().height >= playerSprite.getPosition().y) {
+                    gameOver = true;
+                    break;
+                }
+
+                // Random enemy shooting based on shootClock
+                if (enemy.shootClock.getElapsedTime().asMilliseconds() > enemy.shootDelay) { // Shoot based on random delay
+                    Bullet enemyBullet;
+                    enemyBullet.shape.setSize(Vector2f(5.0f, 10.0f));
+                    enemyBullet.shape.setFillColor(Color::Red);
+                    enemyBullet.shape.setPosition(
+                        enemy.sprite.getPosition().x + enemy.sprite.getGlobalBounds().width / 2 - enemyBullet.shape.getSize().x / 2,
+                        enemy.sprite.getPosition().y + enemy.sprite.getGlobalBounds().height
+                    );
+                    enemyBullet.active = true;
+                    enemy.bullets.push_back(enemyBullet);
+                    enemy.shootClock.restart();
+                    // Reassign new random shoot delay for next shot
+                    enemy.shootDelay = rand() % 10000 + 5000;
+                }
+
+                // Move enemy's bullets
+                for (auto& enemyBullet : enemy.bullets) {
+                    if (enemyBullet.active) {
+                        enemyBullet.shape.move(0, BULLET_SPEED);
+                        // Check if enemy bullet hits the player
+                        if (enemyBullet.shape.getGlobalBounds().intersects(playerSprite.getGlobalBounds())) {
+                            gameOver = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle game over
+        if (gameOver || enemies.empty()) {
+            resetGame(playerSprite, bullets, enemies, enemyTexture, enemyRows, enemyColumns);
+            enemyDirection = ENEMY_SPEED; // Reset direction
+            continue;
+        }
+
+        if (changeDirection) {
+            enemyDirection = -enemyDirection;
+            for (auto& enemy : enemies) {
+                enemy.sprite.move(0, ENEMY_SIZE.y); // Move enemies down
+            }
+        }
+
+        // Check collisions for player bullets and enemies
+        for (auto& bullet : bullets) {
+            if (bullet.active) {
+                for (auto& enemy : enemies) {
+                    if (enemy.active && bullet.shape.getGlobalBounds().intersects(enemy.sprite.getGlobalBounds())) {
+                        bullet.active = false;
+                        enemy.active = false;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Remove inactive bullets
+        bullets.erase(remove_if(bullets.begin(), bullets.end(), [](const Bullet& b) { return !b.active; }), bullets.end());
+
+        // Remove inactive enemy bullets
+        for (auto& enemy : enemies) {
+            enemy.bullets.erase(remove_if(enemy.bullets.begin(), enemy.bullets.end(), [](const Bullet& b) { return !b.active; }), enemy.bullets.end());
+        }
+
+        // Rendering
+        window.clear();
+
+        // Draw background
+        window.draw(backgroundSprite);
+
+        // Draw player
+        window.draw(playerSprite);
+
+        // Draw bullets
+        for (const auto& bullet : bullets) {
+            if (bullet.active) {
+                window.draw(bullet.shape);
+            }
+        }
+
+        // Draw enemy bullets
+        for (const auto& enemy : enemies) {
+            for (const auto& enemyBullet : enemy.bullets) {
+                if (enemyBullet.active) {
+                    window.draw(enemyBullet.shape);
+                }
+            }
+        }
+
+        // Draw enemies
+        for (const auto& enemy : enemies) {
+            if (enemy.active) {
+                window.draw(enemy.sprite);
+            }
+        }
+
+        window.display();
+    }
+
+    return 0;
+}
